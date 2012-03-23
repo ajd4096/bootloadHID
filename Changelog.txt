@@ -1,0 +1,6 @@
+This file documents changes in the software and firmware of bootloaderHID.
+New entries are always appended to the end of the file. Scroll down to the
+bottom to see the most recent changes.
+
+
+* Release 2007-06-25
