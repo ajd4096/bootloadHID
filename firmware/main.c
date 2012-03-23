@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt)
- * This Revision: $Id: main.c 693 2008-11-14 15:09:37Z cs $
+ * This Revision: $Id: main.c 788 2010-05-30 20:54:41Z cs $
  */
 
 #include <avr/io.h>
@@ -215,7 +215,7 @@ uchar   i = 0;
     sei();
 }
 
-int main(void)
+int __attribute__((noreturn)) main(void)
 {
     /* initialize hardware */
     bootLoaderInit();
@@ -246,6 +246,5 @@ int main(void)
         }while(bootLoaderCondition());
     }
     leaveBootloader();
-    return 0;
 }
 

@@ -5,7 +5,7 @@
 # Tabsize: 4
 # Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
 # License: GNU GPL v2 (see License.txt)
-# This Revision: $Id: Makefile 684 2008-10-22 18:43:39Z cs $
+# This Revision: $Id: Makefile 788 2010-05-30 20:54:41Z cs $
 
 ###############################################################################
 # Configure the following variables according to your AVR. The example below
@@ -40,9 +40,10 @@ FUSEL = 0x9f
 
 AVRDUDE = avrdude -c stk500v2 -P avrdoper -p $(DEVICE)
 
-LDFLAGS += -Wl,--section-start=.text=$(BOOTLOADER_ADDRESS)
+LDFLAGS += -Wl,--relax,--gc-sections -Wl,--section-start=.text=$(BOOTLOADER_ADDRESS)
 
-COMPILE = avr-gcc -Wall -Os -Iusbdrv -I. -mmcu=$(DEVICE) -DF_CPU=$(F_CPU) -DDEBUG_LEVEL=0 # -DTEST_MODE
+# Omit -fno-* options when using gcc 3, it does not support them.
+COMPILE = avr-gcc -Wall -Os -fno-move-loop-invariants -fno-tree-scev-cprop -fno-inline-small-functions -Iusbdrv -I. -mmcu=$(DEVICE) -DF_CPU=$(F_CPU) -DDEBUG_LEVEL=0 # -DTEST_MODE
 # NEVER compile the final product with debugging! Any debug output will
 # distort timing so that the specs can't be met.
 
@@ -90,7 +91,7 @@ main.bin:	$(OBJECTS)
 main.hex:	main.bin
 	rm -f main.hex main.eep.hex
 	avr-objcopy -j .text -j .data -O ihex main.bin main.hex
-	avr-size main.bin
+	avr-size main.hex
 
 disasm:	main.bin
 	avr-objdump -d main.bin

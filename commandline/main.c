@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: Proprietary, free under certain conditions. See Documentation.
- * This Revision: $Id: main.c 373 2007-07-04 08:59:36Z cs $
+ * This Revision: $Id: main.c 787 2010-05-30 20:54:25Z cs $
  */
 
 #include <stdio.h>
@@ -156,45 +156,47 @@ union{
         goto errorOccurred;
     }
     len = sizeof(buffer);
-    if((err = usbGetReport(dev, USB_HID_REPORT_TYPE_FEATURE, 1, buffer.bytes, &len)) != 0){
-        fprintf(stderr, "Error reading page size: %s\n", usbErrorMessage(err));
-        goto errorOccurred;
-    }
-    if(len < sizeof(buffer.info)){
-        fprintf(stderr, "Not enough bytes in device info report (%d instead of %d)\n", len, (int)sizeof(buffer.info));
-        err = -1;
-        goto errorOccurred;
-    }
-    pageSize = getUsbInt(buffer.info.pageSize, 2);
-    deviceSize = getUsbInt(buffer.info.flashSize, 4);
-    printf("Page size   = %d (0x%x)\n", pageSize, pageSize);
-    printf("Device size = %d (0x%x); %d bytes remaining\n", deviceSize, deviceSize, deviceSize - 2048);
-    if(endAddr > deviceSize - 2048){
-        fprintf(stderr, "Data (%d bytes) exceeds remaining flash size!\n", endAddr);
-        err = -1;
-        goto errorOccurred;
-    }
-    if(pageSize < 128){
-        mask = 127;
-    }else{
-        mask = pageSize - 1;
-    }
-    startAddr &= ~mask;                  /* round down */
-    endAddr = (endAddr + mask) & ~mask;  /* round up */
-    printf("Uploading %d (0x%x) bytes starting at %d (0x%x)\n", endAddr - startAddr, endAddr - startAddr, startAddr, startAddr);
-    while(startAddr < endAddr){
-        buffer.data.reportId = 2;
-        memcpy(buffer.data.data, dataBuffer + startAddr, 128);
-        setUsbInt(buffer.data.address, startAddr, 3);
-        printf("\r0x%05x ... 0x%05x", startAddr, startAddr + (int)sizeof(buffer.data.data));
-        fflush(stdout);
-        if((err = usbSetReport(dev, USB_HID_REPORT_TYPE_FEATURE, buffer.bytes, sizeof(buffer.data))) != 0){
-            fprintf(stderr, "Error uploading data block: %s\n", usbErrorMessage(err));
+    if(endAddr > startAddr){    // we need to upload data
+        if((err = usbGetReport(dev, USB_HID_REPORT_TYPE_FEATURE, 1, buffer.bytes, &len)) != 0){
+            fprintf(stderr, "Error reading page size: %s\n", usbErrorMessage(err));
             goto errorOccurred;
         }
-        startAddr += sizeof(buffer.data.data);
+        if(len < sizeof(buffer.info)){
+            fprintf(stderr, "Not enough bytes in device info report (%d instead of %d)\n", len, (int)sizeof(buffer.info));
+            err = -1;
+            goto errorOccurred;
+        }
+        pageSize = getUsbInt(buffer.info.pageSize, 2);
+        deviceSize = getUsbInt(buffer.info.flashSize, 4);
+        printf("Page size   = %d (0x%x)\n", pageSize, pageSize);
+        printf("Device size = %d (0x%x); %d bytes remaining\n", deviceSize, deviceSize, deviceSize - 2048);
+        if(endAddr > deviceSize - 2048){
+            fprintf(stderr, "Data (%d bytes) exceeds remaining flash size!\n", endAddr);
+            err = -1;
+            goto errorOccurred;
+        }
+        if(pageSize < 128){
+            mask = 127;
+        }else{
+            mask = pageSize - 1;
+        }
+        startAddr &= ~mask;                  /* round down */
+        endAddr = (endAddr + mask) & ~mask;  /* round up */
+        printf("Uploading %d (0x%x) bytes starting at %d (0x%x)\n", endAddr - startAddr, endAddr - startAddr, startAddr, startAddr);
+        while(startAddr < endAddr){
+            buffer.data.reportId = 2;
+            memcpy(buffer.data.data, dataBuffer + startAddr, 128);
+            setUsbInt(buffer.data.address, startAddr, 3);
+            printf("\r0x%05x ... 0x%05x", startAddr, startAddr + (int)sizeof(buffer.data.data));
+            fflush(stdout);
+            if((err = usbSetReport(dev, USB_HID_REPORT_TYPE_FEATURE, buffer.bytes, sizeof(buffer.data))) != 0){
+                fprintf(stderr, "Error uploading data block: %s\n", usbErrorMessage(err));
+                goto errorOccurred;
+            }
+            startAddr += sizeof(buffer.data.data);
+        }
+        printf("\n");
     }
-    printf("\n");
     if(leaveBootLoader){
         /* and now leave boot loader: */
         buffer.info.reportId = 1;
@@ -213,12 +215,12 @@ errorOccurred:
 
 static void printUsage(char *pname)
 {
-    fprintf(stderr, "usage: %s [-r] <intel-hexfile>\n", pname);
+    fprintf(stderr, "usage: %s [-r] [<intel-hexfile>]\n", pname);
 }
 
 int main(int argc, char **argv)
 {
-char    *file;
+char    *file = NULL;
 
     if(argc < 2){
         printUsage(argv[0]);
@@ -230,23 +232,24 @@ char    *file;
     }
     if(strcmp(argv[1], "-r") == 0){
         leaveBootLoader = 1;
-        if(argc < 3){
-            printUsage(argv[0]);
-            return 1;
+        if(argc >= 3){
+            file = argv[2];
         }
-        file = argv[2];
     }else{
         file = argv[1];
     }
     startAddress = sizeof(dataBuffer);
     endAddress = 0;
-    memset(dataBuffer, -1, sizeof(dataBuffer));
-    if(parseIntelHex(file, dataBuffer, &startAddress, &endAddress))
-        return 1;
-    if(startAddress >= endAddress){
-        fprintf(stderr, "No data in input file, exiting.\n");
-        return 0;
+    if(file != NULL){   // an upload file was given, load the data
+        memset(dataBuffer, -1, sizeof(dataBuffer));
+        if(parseIntelHex(file, dataBuffer, &startAddress, &endAddress))
+            return 1;
+        if(startAddress >= endAddress){
+            fprintf(stderr, "No data in input file, exiting.\n");
+            return 0;
+        }
     }
+    // if no file was given, endAddress is less than startAddress and no data is uploaded
     if(uploadData(dataBuffer, startAddress, endAddress))
         return 1;
     return 0;

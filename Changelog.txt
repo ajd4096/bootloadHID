@@ -27,3 +27,8 @@ bottom to see the most recent changes.
 - Example config should check jumper status on PIND, not PORTD.
 
 * Release 2008-11-26
+
+- Allow option "-r" to bootloadHID alone, even without uploading a file.
+- Added optimizations for gcc 4.3.
+
+* Release 2010-07-29
