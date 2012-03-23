@@ -39,7 +39,7 @@ these macros are defined, the boot loader usees them.
 
 /* ---------------------------- Hardware Config ---------------------------- */
 
-#define USB_CFG_IOPORTNAME      D
+#define USB_CFG_IOPORTNAME      B
 /* This is the port where the USB bus is connected. When you configure it to
  * "B", the registers PORTB, PINB and DDRB will be used.
  */
@@ -47,7 +47,7 @@ these macros are defined, the boot loader usees them.
 /* This is the bit number in USB_CFG_IOPORT where the USB D- line is connected.
  * This may be any bit in the port.
  */
-#define USB_CFG_DPLUS_BIT       2
+#define USB_CFG_DPLUS_BIT       1
 /* This is the bit number in USB_CFG_IOPORT where the USB D+ line is connected.
  * This may be any bit in the port. Please note that D+ must also be connected
  * to interrupt pin INT0! [You can also use other interrupts, see section
@@ -80,6 +80,18 @@ these macros are defined, the boot loader usees them.
 
 /* --------------------------- Functional Range ---------------------------- */
 
+/* ------------------------ Entering/Exiting Bootloader -------------------- */
+/* There are two mutually exclusive ways to enter the boot loader:
+ * 1) Manually by asserting bootLoaderCondition(). The boot loader waits
+ *    until it is signaled to exit by either the programmer closing the
+ *    connection or bootLooaderCondition() is no longer asserted. See
+ *    USING_PUSHBUTTON and BOOTLOADER_CAN_EXIT to learn how to modify
+ *    the exit behavior. This is the default entrance method.
+ * 2) Automatically but the boot loader exits after a time out period has
+ *    elapsed or the programmer closes the connection. See the comments
+ *    for BOOTLOADER_CAN_EXIT to learn how to modify the exit behavior.
+ */
+
 #define BOOTLOADER_CAN_EXIT     1
 /* If this macro is defined to 1, the boot loader command line utility can
  * initiate a reboot after uploading the FLASH when the "-r" command line
@@ -91,6 +103,19 @@ these macros are defined, the boot loader usees them.
  * Since only the reset vector and INT0 (the first two vectors) are used,
  * this saves quite a bit of flash. See Alexander Neumann's boot loader for
  * an example: http://git.lochraster.org:2080/?p=fd0/usbload;a=tree
+ */
+
+#define TIMEOUT_ENABLED            1
+/* If TIMEOUT_ENABLED is defined to 1 then the boot loader will always load
+ * and stay active until the programmer closes the connection or the time
+ * out period has elapsed. Since the boot loader always loads there is no
+ * need for a jumper on the bootLoaderCondition() pin. Costs ~108 bytes.
+ */
+
+#define TIMEOUT_DURATION           60
+/* The number of seconds the boot loader waits before exiting if no activity
+ * has occured during the timeout interval. If TIMEOUT_ENABLED is defined
+ * to 0 this define will be ignored. Maximum value is 255 seconds.
  */
 
 /* ------------------------------------------------------------------------- */
@@ -106,13 +131,45 @@ these macros are defined, the boot loader usees them.
 #ifndef __ASSEMBLER__   /* assembler cannot parse function definitions */
 #include <util/delay.h>
 
+#define JUMPER_BIT  7   /* jumper is connected to this bit in port D, active low */
+
+#ifndef MCUCSR          /* compatibility between ATMega8 and ATMega88 */
+#   define MCUCSR   MCUSR
+#endif
+
+#ifndef TIMEOUT_ENABLED
+#   define TIMEOUT_ENABLED 0
+#endif
+
 static inline void  bootLoaderInit(void)
 {
-    PORTD = 1 << 3; /* activate pull-up for key */
+#if !TIMEOUT_ENABLED
+    PORTD |= (1 << JUMPER_BIT);     /* activate pull-up */
     _delay_us(10);  /* wait for levels to stabilize */
+#endif
+    if(!(MCUCSR & (1 << EXTRF)))    /* If this was not an external reset, ignore */
+        leaveBootloader();
+    MCUCSR = 0;                     /* clear all reset flags for next time */
 }
 
-#define bootLoaderCondition()   ((PIND & (1 << 3)) == 0)   /* True if jumper is set */
+static inline void  bootLoaderExit(void)
+{
+
+#if !TIMEOUT_ENABLED
+    PORTD = 0;                      /* undo bootLoaderInit() changes */
+#else
+    TCCR1B = 0; // turn off timer1 and reset to initial value
+#endif
+
+DDRC = 0; // turn off LEDs
+}
+
+#if !TIMEOUT_ENABLED
+#    define bootLoaderCondition()   ((PIND & (1 << JUMPER_BIT)) == 0)
+#else
+#    define bootLoaderCondition()    1
+#endif
+
 
 #endif
 

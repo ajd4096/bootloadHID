@@ -18,7 +18,8 @@ DEVICE = atmega8
 BOOTLOADER_ADDRESS = 1800
 F_CPU = 12000000
 FUSEH = 0xc0
-FUSEL = 0x9f
+FUSEL = 0xBF
+LOCK  = 0x0F
 # Fuse high byte:
 # 0xc0 = 1 1 0 0   0 0 0 0 <-- BOOTRST (boot reset vector at 0x1800)
 #        ^ ^ ^ ^   ^ ^ ^------ BOOTSZ0
@@ -29,7 +30,7 @@ FUSEL = 0x9f
 #        | +------------------ WDTON (WDT not always on)
 #        +-------------------- RSTDISBL (reset pin is enabled)
 # Fuse low byte:
-# 0x9f = 1 0 0 1   1 1 1 1
+# 0xBF = 1 0 1 1   1 1 1 1
 #        ^ ^ \ /   \--+--/
 #        | |  |       +------- CKSEL 3..0 (external >8M crystal)
 #        | |  +--------------- SUT 1..0 (crystal osc, BOD enabled)
@@ -76,7 +77,7 @@ fuse:
 	$(AVRDUDE) -U hfuse:w:$(FUSEH):m -U lfuse:w:$(FUSEL):m
 
 lock:
-	$(AVRDUDE) -U lock:w:0x2f:m
+	$(AVRDUDE) -U lock:w:$(LOCK):m
 
 read_fuses:
 	$(UISP) --rd_fuses

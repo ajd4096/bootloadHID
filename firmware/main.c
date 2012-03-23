@@ -30,6 +30,13 @@ static void leaveBootloader() __attribute__((__noreturn__));
 #   define uint     unsigned int
 #endif
 
+#ifndef TIMEOUT_ENABLED
+#   define TIMEOUT_ENABLED 0
+#endif
+#ifndef TIMEOUT_DURATION
+#   define TIMEOUT_DURATION 10
+#endif
+
 #if (FLASHEND) > 0xffff /* we need long addressing */
 #   define addr_t           ulong
 #else
@@ -71,6 +78,13 @@ PROGMEM char usbHidReportDescriptor[33] = {
 #   define bootLoaderCondition()    BOOTLOADER_CONDITION
 #endif
 
+/* device compatibility: */
+#ifndef TIFR1    /* ATMega8 uses TIFR instead of TIFR1 */
+#   define TIFR1     TIFR
+#endif
+#ifndef GICR    /* ATMega*8 don't have GICR, use MCUCR instead */
+#   define GICR     MCUCR
+#endif
 /* compatibility with ATMega88 and other new devices: */
 #ifndef TCCR0
 #define TCCR0   TCCR0B
@@ -79,6 +93,16 @@ PROGMEM char usbHidReportDescriptor[33] = {
 #define GICR    MCUCR
 #endif
 
+#if TIMEOUT_ENABLED
+static uint8_t          inactivity_timer_nsec;
+#endif
+
+/* ------------------------------------------------------------------------ */
+
+#if TIMEOUT_ENABLED
+static void inactivity_timer_start(void);
+static void inactivity_timer_stop(void);
+#endif
 static void (*nullVector)(void) __attribute__((__noreturn__));
 
 static void leaveBootloader()
@@ -104,6 +128,9 @@ static void leaveBootloader()
 uchar   usbFunctionSetup(uchar data[8])
 {
 usbRequest_t    *rq = (void *)data;
+#if TIMEOUT_ENABLED
+    inactivity_timer_stop();
+#endif
 static uchar    replyBuffer[7] = {
         1,                              /* report ID */
         SPM_PAGESIZE & 0xff,
@@ -128,6 +155,10 @@ static uchar    replyBuffer[7] = {
         usbMsgPtr = replyBuffer;
         return 7;
     }
+#if TIMEOUT_ENABLED
+    inactivity_timer_start();
+#endif
+
     return 0;
 }
 
@@ -140,6 +171,9 @@ union {
 }       address;
 uchar   isLast;
 
+#if TIMEOUT_ENABLED
+    inactivity_timer_stop();
+#endif
     address.l = currentAddress;
     if(offset == 0){
         DBG1(0x30, data, 3);
@@ -189,13 +223,35 @@ uchar   isLast;
             sei();
             boot_spm_busy_wait();
 #endif
+
         }
         len -= 2;
     }while(len);
     currentAddress = address.l;
     DBG1(0x35, (void *)&currentAddress, 4);
+
+#if TIMEOUT_ENABLED
+    inactivity_timer_start();
+#endif
+
     return isLast;
 }
+
+#if TIMEOUT_ENABLED
+static void inactivity_timer_start(void)
+{
+    inactivity_timer_nsec = 0;
+    TCNT1 = 0; // reset timer to 0
+    TCCR1B |= ((1 << CS12) | (1 << CS10));    // start timer, 1024 prescale
+}
+
+static void inactivity_timer_stop(void)
+{
+    TCCR1B &= ~((1 << CS12) | (1 << CS11) | (1 << CS10)); // stop timer
+}
+#endif
+
+/* ------------------------------------------------------------------------ */
 
 static void initForUsbConnectivity(void)
 {
@@ -212,7 +268,17 @@ uchar   i = 0;
         _delay_ms(1);
     }while(--i);
     usbDeviceConnect();
+
+#if TIMEOUT_ENABLED
+    TCCR1B |= (1 << WGM12); // put timer1 in CTC mode
+    OCR1A = F_CPU/1024; // number of prescaled ticks per second
+#endif
+
     sei();
+
+#if TIMEOUT_ENABLED
+    inactivity_timer_start();
+#endif
 }
 
 int __attribute__((noreturn)) main(void)
@@ -232,6 +298,17 @@ int __attribute__((noreturn)) main(void)
         do{ /* main event loop */
             wdt_reset();
             usbPoll();
+#if TIMEOUT_ENABLED
+            if (TIFR1 & (1 << OCF1A)){
+                inactivity_timer_nsec++;
+                TIFR1 = (1 << OCF1A); // clear interrupt
+            }
+            if (inactivity_timer_nsec >= TIMEOUT_DURATION){
+                /* turn on red LED to signal boot loader has timed out */
+                DDRC |= (1 << PC1);  // turn on red LED
+                break;
+            }
+#endif
 #if BOOTLOADER_CAN_EXIT
             if(exitMainloop){
 #if F_CPU == 12800000
