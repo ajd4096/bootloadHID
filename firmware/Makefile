@@ -5,7 +5,7 @@
 # Tabsize: 4
 # Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
 # License: GNU GPL v2 (see License.txt)
-# This Revision: $Id: Makefile 376 2007-07-07 12:03:37Z cs $
+# This Revision: $Id: Makefile 684 2008-10-22 18:43:39Z cs $
 
 ###############################################################################
 # Configure the following variables according to your AVR. The example below
@@ -16,6 +16,7 @@
 
 DEVICE = atmega8
 BOOTLOADER_ADDRESS = 1800
+F_CPU = 12000000
 FUSEH = 0xc0
 FUSEL = 0x9f
 # Fuse high byte:
@@ -41,7 +42,7 @@ AVRDUDE = avrdude -c stk500v2 -P avrdoper -p $(DEVICE)
 
 LDFLAGS += -Wl,--section-start=.text=$(BOOTLOADER_ADDRESS)
 
-COMPILE = avr-gcc -Wall -Os -Iusbdrv -I. -mmcu=$(DEVICE) #-DTEST_MODE -DDEBUG_LEVEL=2
+COMPILE = avr-gcc -Wall -Os -Iusbdrv -I. -mmcu=$(DEVICE) -DF_CPU=$(F_CPU) -DDEBUG_LEVEL=0 # -DTEST_MODE
 # NEVER compile the final product with debugging! Any debug output will
 # distort timing so that the specs can't be met.
 
@@ -74,7 +75,7 @@ fuse:
 	$(AVRDUDE) -U hfuse:w:$(FUSEH):m -U lfuse:w:$(FUSEL):m
 
 lock:
-	$(AVRDUDE) -U lock:w:0xef:m
+	$(AVRDUDE) -U lock:w:0x2f:m
 
 read_fuses:
 	$(UISP) --rd_fuses

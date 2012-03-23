@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt)
- * This Revision: $Id: main.c 378 2007-07-07 20:47:21Z cs $
+ * This Revision: $Id: main.c 684 2008-10-22 18:43:39Z cs $
  */
 
 #include <avr/io.h>
@@ -14,16 +14,34 @@
 #include <avr/wdt.h>
 #include <avr/boot.h>
 #include <string.h>
+#include <util/delay.h>
+
+static void leaveBootloader() __attribute__((__noreturn__));
 
 #include "bootloaderconfig.h"
 #include "usbdrv.c"
 
-static char             reportId = -1;
-static unsigned long    currentAddress; /* in bytes */
+/* ------------------------------------------------------------------------ */
+
+#ifndef ulong
+#   define ulong    unsigned long
+#endif
+#ifndef uint
+#   define uint     unsigned int
+#endif
+
+#if (FLASHEND) > 0xffff /* we need long addressing */
+#   define addr_t           ulong
+#else
+#   define addr_t           uint
+#endif
+
+static addr_t           currentAddress; /* in bytes */
 static uchar            offset;         /* data already processed in current transfer */
 #if BOOTLOADER_CAN_EXIT
 static uchar            exitMainloop;
 #endif
+
 
 PROGMEM char usbHidReportDescriptor[33] = {
     0x06, 0x00, 0xff,              // USAGE_PAGE (Generic Desktop)
@@ -42,7 +60,6 @@ PROGMEM char usbHidReportDescriptor[33] = {
     0x95, 0x83,                    //   REPORT_COUNT (131)
     0x09, 0x00,                    //   USAGE (Undefined)
     0xb2, 0x02, 0x01,              //   FEATURE (Data,Var,Abs,Buf)
-
     0xc0                           // END_COLLECTION
 };
 
@@ -54,16 +71,28 @@ PROGMEM char usbHidReportDescriptor[33] = {
 #   define bootLoaderCondition()    BOOTLOADER_CONDITION
 #endif
 
+/* compatibility with ATMega88 and other new devices: */
+#ifndef TCCR0
+#define TCCR0   TCCR0B
+#endif
+#ifndef GICR
+#define GICR    MCUCR
+#endif
+
 static void (*nullVector)(void) __attribute__((__noreturn__));
 
-static void leaveBootloader() __attribute__((__noreturn__));
 static void leaveBootloader()
 {
     DBG1(0x01, 0, 0);
     cli();
     boot_rww_enable();
-    GICR = (1 << IVCE);  /* enable change of interrupt vectors */
-    GICR = (0 << IVSEL); /* move interrupts to application flash section */
+    USB_INTR_ENABLE = 0;
+    USB_INTR_CFG = 0;       /* also reset config bits */
+#if F_CPU == 12800000
+    TCCR0 = 0;              /* default value */
+#endif
+    GICR = (1 << IVCE);     /* enable change of interrupt vectors */
+    GICR = (0 << IVSEL);    /* move interrupts to application flash section */
 /* We must go through a global function pointer variable instead of writing
  *  ((void (*)(void))0)();
  * because the compiler optimizes a constant 0 to "rcall 0" which is not
@@ -86,9 +115,15 @@ static uchar    replyBuffer[7] = {
     };
 
     if(rq->bRequest == USBRQ_HID_SET_REPORT){
-        reportId = rq->wValue.bytes[0];    /* store report ID */
-        offset = 0;
-        return 0xff;
+        if(rq->wValue.bytes[0] == 2){
+            offset = 0;
+            return USB_NO_MSG;
+        }
+#if BOOTLOADER_CAN_EXIT
+        else{
+            exitMainloop = 1;
+        }
+#endif
     }else if(rq->bRequest == USBRQ_HID_GET_REPORT){
         usbMsgPtr = replyBuffer;
         return 7;
@@ -99,75 +134,82 @@ static uchar    replyBuffer[7] = {
 uchar usbFunctionWrite(uchar *data, uchar len)
 {
 union {
-    unsigned long   l;
-    unsigned short  s[2];
-    uchar           c[4];
+    addr_t  l;
+    uint    s[sizeof(addr_t)/2];
+    uchar   c[sizeof(addr_t)];
 }       address;
+uchar   isLast;
 
-#if BOOTLOADER_CAN_EXIT
-    if(reportId == 1){          /* leave boot loader */
-        exitMainloop = 1;
-        return 1;
-    }else
+    address.l = currentAddress;
+    if(offset == 0){
+        DBG1(0x30, data, 3);
+        address.c[0] = data[1];
+        address.c[1] = data[2];
+#if (FLASHEND) > 0xffff /* we need long addressing */
+        address.c[2] = data[3];
+        address.c[3] = 0;
 #endif
-    if(reportId == 2){    /* write page */
-        if(offset == 0){
-            data++;
-            DBG1(0x30, data, 4);
-            address.c[0] = *data++;
-            address.c[1] = *data++;
-            address.c[2] = *data++;
-            address.c[3] = 0;
-            len -= 4;
-        }else{
-            DBG1(0x31, (void *)&currentAddress, 4);
-            address.l = currentAddress;
-        }
-        offset += len;
-        len >>= 1;
-        do{
-            DBG1(0x32, 0, 0);
-            if((address.s[0] & (SPM_PAGESIZE - 1)) == 0){   /* if page start: erase */
-                DBG1(0x33, 0, 0);
-#ifndef TEST_MODE
-                cli();
-                boot_page_erase(address.l);     /* erase page */
-                sei();
-                boot_spm_busy_wait();           /* wait until page is erased */
-#endif
-            }
-            cli();
-            boot_page_fill(address.l, *(short *)data);
-            sei();
-            address.l += 2;
-            data += 2;
-            /* write page when we cross page boundary */
-            if((address.s[0] & (SPM_PAGESIZE - 1)) == 0){
-                DBG1(0x34, 0, 0);
-#ifndef TEST_MODE
-                cli();
-                boot_page_write(address.l - 2);
-                sei();
-                boot_spm_busy_wait();
-#endif
-            }
-        }while(--len != 0);
-        currentAddress = address.l;
-        DBG1(0x35, (void *)&currentAddress, 4);
-        if(offset < 128){
-            return 0;
-        }else{
-            reportId = -1;
-            return 1;
-        }
+        data += 4;
+        len -= 4;
     }
-    return 1;
+    DBG1(0x31, (void *)&currentAddress, 4);
+    offset += len;
+    isLast = offset & 0x80; /* != 0 if last block received */
+    do{
+        addr_t prevAddr;
+        DBG1(0x32, 0, 0);
+        if((address.s[0] & (SPM_PAGESIZE - 1)) == 0){   /* if page start: erase */
+            DBG1(0x33, 0, 0);
+#ifndef TEST_MODE
+            cli();
+            boot_page_erase(address.l);     /* erase page */
+            sei();
+            boot_spm_busy_wait();           /* wait until page is erased */
+#endif
+        }
+        cli();
+        boot_page_fill(address.l, *(short *)data);
+        sei();
+        prevAddr = address.l;
+        address.l += 2;
+        data += 2;
+        /* write page when we cross page boundary */
+        if((address.s[0] & (SPM_PAGESIZE - 1)) == 0){
+            DBG1(0x34, 0, 0);
+#ifndef TEST_MODE
+            cli();
+            boot_page_write(prevAddr);
+            sei();
+            boot_spm_busy_wait();
+#endif
+        }
+        len -= 2;
+    }while(len);
+    currentAddress = address.l;
+    DBG1(0x35, (void *)&currentAddress, 4);
+    return isLast;
+}
+
+static void initForUsbConnectivity(void)
+{
+uchar   i = 0;
+
+#if F_CPU == 12800000
+    TCCR0 = 3;          /* 1/64 prescaler */
+#endif
+    usbInit();
+    /* enforce USB re-enumerate: */
+    usbDeviceDisconnect();  /* do this while interrupts are disabled */
+    do{             /* fake USB disconnect for > 250 ms */
+        wdt_reset();
+        _delay_ms(1);
+    }while(--i);
+    usbDeviceConnect();
+    sei();
 }
 
 int main(void)
 {
-uchar   i, j = 0;
-
     /* initialize hardware */
     bootLoaderInit();
     odDebugInit();
@@ -178,33 +220,20 @@ uchar   i, j = 0;
         GICR = (1 << IVCE);  /* enable change of interrupt vectors */
         GICR = (1 << IVSEL); /* move interrupts to boot flash section */
 #endif
-#ifdef USB_CFG_PULLUP_IOPORTNAME
-        while(--j){     /* USB Reset by device only required on Watchdog Reset */
-            i = 0;
-            while(--i); /* delay >10ms for USB reset */
-        }
-        usbDeviceConnect();
-#else
-        USBDDR = (1 << USB_CFG_DMINUS_BIT) | (1 << USB_CFG_DPLUS_BIT);  /* issue RESET */
-        while(--j){     /* USB Reset by device only required on Watchdog Reset */
-            i = 0;
-            while(--i); /* delay >10ms for USB reset */
-        }
-        USBDDR = 0;
-#endif
-        usbInit();
-        sei();
-        while(bootLoaderCondition()){ /* main event loop */
+        initForUsbConnectivity();
+        do{ /* main event loop */
+            wdt_reset();
             usbPoll();
 #if BOOTLOADER_CAN_EXIT
             if(exitMainloop){
-                i = 0;
-                while(--i)
-                    usbPoll();      /* try to send the response */
-                break;
+#if F_CPU != 12800000   /* memory is tight at 12.8 MHz, save luxury stuff */
+                static uint i;
+                if(--i == 0)    /* delay 65k iterations to allow for USB reply to exit command */
+#endif
+                    break;
             }
 #endif
-        }
+        }while(bootLoaderCondition());
     }
     leaveBootloader();
     return 0;

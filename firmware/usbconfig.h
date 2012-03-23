@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt)
- * This Revision: $Id: usbconfig.h 376 2007-07-07 12:03:37Z cs $
+ * This Revision: $Id: usbconfig.h 684 2008-10-22 18:43:39Z cs $
  */
 
 #ifndef __usbconfig_h_included__
@@ -41,6 +41,14 @@ the newest features and options.
 /* Define this to 1 if you want to compile a version with three endpoints: The
  * default control endpoint 0, an interrupt-in endpoint 1 and an interrupt-in
  * endpoint 3. You must also enable endpoint 1 above.
+ */
+#define USB_CFG_SUPPRESS_INTR_CODE      1
+/* Define this to 1 if you want to declare interrupt-in endpoints, but don't
+ * want to send any data over them. If this macro is defined to 1, functions
+ * usbSetInterrupt() and usbSetInterrupt3() are omitted. This is useful if
+ * you need the interrupt-in endpoints in order to comply to an interface
+ * (e.g. HID), but never want to send any data. This option saves a couple
+ * of bytes in flash memory and the transmit buffers in RAM.
  */
 #define USB_CFG_IMPLEMENT_HALT          0
 /* Define this to 1 if you also want to implement the ENDPOINT_HALT feature
@@ -82,6 +90,56 @@ the newest features and options.
 /* Define this to 1 if you want flowcontrol over USB data. See the definition
  * of the macros usbDisableAllRequests() and usbEnableAllRequests() in
  * usbdrv.h.
+ */
+#define TIMER0_PRESCALING           64 /* must match the configuration for TIMER0 in main */
+#define TOLERATED_DEVIATION_PPT     5  /* max clock deviation before we tune in 1/10 % */
+/* derived constants: */
+#define EXPECTED_TIMER0_INCREMENT   ((F_CPU / (1000 * TIMER0_PRESCALING)) & 0xff)
+#define TOLERATED_DEVIATION         (TOLERATED_DEVIATION_PPT * F_CPU / (1000000 * TIMER0_PRESCALING))
+#ifdef __ASSEMBLER__
+macro tuneOsccal
+    push    YH                              ;[0]
+    clr     YH                              ;[2]
+    in      YL, TCNT0                       ;[3]
+    out     TCNT0, YH                       ;[4]
+    subi    YL, EXPECTED_TIMER0_INCREMENT   ;[5]
+#if OSCCAL > 0x3f
+    lds     YH, 0x20+OSCCAL                 ;[6]
+#else
+    in      YH, OSCCAL                      ;[6]
+#endif
+    cpi     YL, TOLERATED_DEVIATION + 1     ;[7]
+    brmi    notTooHigh                      ;[8]
+    subi    YH, 1                           ;[9] clock rate was too high
+    rjmp    osctuneDone                     ;[10]
+notTooHigh:
+    cpi     YL, -TOLERATED_DEVIATION        ;[10]
+    brpl    osctuneDone                     ;[11] not too low
+    inc     YH                              ;[12] clock rate was too low
+osctuneDone:
+#if OSCCAL > 0x3f
+    sts     0x20+OSCCAL, YH                 ;[12-13] store tuned value
+#else
+    out     OSCCAL, YH                      ;[12-13] store tuned value
+#endif
+tuningOverflow:
+    pop     YH                              ;[14]
+    endm                                    ;[16] max number of cycles
+#endif
+#if F_CPU == 12800000
+#   define USB_SOF_HOOK        tuneOsccal
+#endif
+/* This macro (if defined) is executed in the assembler module when a
+ * Start Of Frame condition is detected. It is recommended to define it to
+ * the name of an assembler macro which is defined here as well so that more
+ * than one assembler instruction can be used. The macro may use the register
+ * YL and modify SREG. If it lasts longer than a couple of cycles, USB messages
+ * immediately after an SOF pulse may be lost and must be retried by the host.
+ * What can you do with this hook? Since the SOF signal occurs exactly every
+ * 1 ms (unless the host is in sleep mode), you can use it to tune OSCCAL in
+ * designs running on the internal RC oscillator.
+ * Please note that Start Of Frame detection works only if D- is wired to the
+ * interrupt, not D+. THIS IS DIFFERENT THAN MOST EXAMPLES!
  */
 
 /* -------------------------- Device Description --------------------------- */

@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2005 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt) or proprietary (CommercialLicense.txt)
- * This Revision: $Id: oddebug.h 275 2007-03-20 09:58:28Z cs $
+ * This Revision: $Id: oddebug.h 623 2008-06-17 18:13:38Z cs $
  */
 
 #ifndef __oddebug_h_included__
@@ -29,10 +29,7 @@ the output and a memory block to dump in hex ('data' and 'len').
 #endif
 
 /* make sure we have the UART defines: */
-#include "iarcompat.h"
-#ifndef __IAR_SYSTEMS_ICC__
-#   include <avr/io.h>
-#endif
+#include "usbportability.h"
 
 #ifndef uchar
 #   define  uchar   unsigned char

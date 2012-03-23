@@ -14,3 +14,10 @@ bottom to see the most recent changes.
 - Updated to newest version of driver.
 
 * Release 2007-10-23
+
+- Updated to newest USB driver.
+- Ported back some improvements from USBaspLoader.
+- Code size optimization to make this boot loader usable with the 12.8 MHz
+  module.
+
+* Release 2008-10-22
