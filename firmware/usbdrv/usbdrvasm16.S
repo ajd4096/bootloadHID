@@ -30,7 +30,7 @@ of CPU cycles, but even an exact number of cycles!
 ; Numbers in brackets are clocks counted from center of last sync bit
 ; when instruction starts
 
-SIG_INTERRUPT0:
+USB_INTR_VECTOR:
 ;order of registers pushed: YL, SREG YH, [sofError], bitcnt, shift, x1, x2, x3, x4, cnt
     push    YL                  ;[-25] push only what is necessary to sync with edge ASAP
     in      YL, SREG            ;[-23]
@@ -59,6 +59,11 @@ waitForK:
     rjmp    foundK
     sbis    USBIN, USBMINUS
     rjmp    foundK
+#if USB_COUNT_SOF
+    lds     YL, usbSofCount
+    inc     YL
+    sts     usbSofCount, YL
+#endif  /* USB_COUNT_SOF */
     rjmp    sofError
 foundK:                         ;[-12]
 ;{3, 5} after falling D- edge, average delay: 4 cycles [we want 5 for center sampling]
@@ -106,22 +111,6 @@ haveTwoBitsK:
 ; Receiver loop (numbers in brackets are cycles within byte after instr)
 ;----------------------------------------------------------------------------
 
-unstuffEven:
-    ori     x3, 1<<6    ;[09] will be shifted right 6 times for bit 0
-    in      x1, USBIN   ;[00] [10]
-    andi    shift, ~0x80;[01]
-    andi    x1, USBMASK ;[02]
-    subi    leap, 3     ;[03] since this is a short (10 cycle) bit, enforce leap bit
-    rjmp    didUnstuffE ;[04]
-
-unstuffOdd:
-    ori     x3, 1<<5    ;[09] will be shifted right 4 times for bit 1
-    in      x2, USBIN   ;[00] [10]
-    andi    shift, ~0x80;[01]
-    andi    x2, USBMASK ;[02]
-    subi    leap, 3     ;[03] since this is a short (10 cycle) bit, enforce leap bit
-    rjmp    didUnstuffO ;[04]
-
 unstuff6:
     andi    x2, USBMASK ;[03]
     ori     x3, 1<<6    ;[04] will not be shifted any more
@@ -137,6 +126,26 @@ unstuff7:
     andi    shift, ~0x80;[02]
     subi    leap, 3     ;[03] since this is a short (10 cycle) bit, enforce leap bit
     rjmp    didUnstuff7 ;[04]
+
+unstuffEven:
+    ori     x3, 1<<6    ;[09] will be shifted right 6 times for bit 0
+    in      x1, USBIN   ;[00] [10]
+    andi    shift, ~0x80;[01]
+    andi    x1, USBMASK ;[02]
+    breq    se0         ;[03]
+    subi    leap, 3     ;[04] since this is a short (10 cycle) bit, enforce leap bit
+    nop                 ;[05]
+    rjmp    didUnstuffE ;[06]
+
+unstuffOdd:
+    ori     x3, 1<<5    ;[09] will be shifted right 4 times for bit 1
+    in      x2, USBIN   ;[00] [10]
+    andi    shift, ~0x80;[01]
+    andi    x2, USBMASK ;[02]
+    breq    se0         ;[03]
+    subi    leap, 3     ;[04] since this is a short (10 cycle) bit, enforce leap bit
+    nop                 ;[05]
+    rjmp    didUnstuffO ;[06]
 
 rxByteLoop:
     andi    x1, USBMASK ;[03]
@@ -168,9 +177,9 @@ rxBitLoop:
     andi    x3, 0x3f    ;[03] topmost two bits reserved for 6 and 7
     subi    x2, 1       ;[04]
     ror     shift       ;[05]
-didUnstuffE:
     cpi     shift, 0xfc ;[06]
     brcc    unstuffEven ;[07]
+didUnstuffE:
     lsr     x3          ;[08]
     lsr     x3          ;[09]
 rxbit1:
@@ -180,9 +189,9 @@ rxbit1:
     eor     x1, x2      ;[03]
     subi    x1, 1       ;[04]
     ror     shift       ;[05]
-didUnstuffO:
     cpi     shift, 0xfc ;[06]
     brcc    unstuffOdd  ;[07]
+didUnstuffO:
     subi    bitcnt, 0xab;[08] == addi 0x55, 0x55 = 0x100/3
     brcs    rxBitLoop   ;[09]
 
@@ -202,7 +211,7 @@ se0:
     neg     cnt                 ;[6]
     cpi     cnt, 3              ;[7]
     ldi     x2, 1<<USB_INTR_PENDING_BIT ;[8]
-    out     USB_INTR_PENDING, x2;[9] clear pending intr and check flag later. SE0 should be over.
+    USB_STORE_PENDING(x2)       ;[9] clear pending intr and check flag later. SE0 should be over.
     brlo    doReturn            ;[10] this is probably an ACK, NAK or similar packet
     sub     YL, cnt             ;[11]
     sbci    YH, 0               ;[12]
@@ -244,17 +253,6 @@ sofError:
     pop     YL
     reti
 
-#if USB_CFG_HAVE_INTRIN_ENDPOINT && USB_CFG_HAVE_INTRIN_ENDPOINT3
-handleIn3:
-    lds     cnt, usbTxLen3      ;[43]
-    sbrc    cnt, 4              ;[45]
-    rjmp    sendCntAndReti      ;[46] 48 + 16 = 64 until SOP
-    sts     usbTxLen3, x1       ;[47] x1 == USBPID_NAK from above
-    ldi     YL, lo8(usbTxBuf3)  ;[49]
-    ldi     YH, hi8(usbTxBuf3)  ;[50]
-    rjmp    usbSendAndReti      ;[51] 53 + 12 = 65 until SOP
-#endif
-
 ;Setup and Out are followed by a data packet two bit times (16 cycles) after
 ;the end of SE0. The sync code allows up to 40 cycles delay from the start of
 ;the sync pattern until the first bit is sampled. That's a total of 56 cycles.
@@ -271,7 +269,7 @@ handleSetupOrOut:               ;[34]
     pop     x1                  ;[46]
     pop     shift               ;[48]
     pop     bitcnt              ;[50]
-    in      YL, USB_INTR_PENDING;[52]
+    USB_LOAD_PENDING(YL)        ;[52]
     sbrc    YL, USB_INTR_PENDING_BIT;[53] check whether data is already arriving
     rjmp    waitForJ            ;[54] save the pops and pushes -- a new interrupt is aready pending
     rjmp    sofError            ;[55] not an error, but it does the pops and reti we want
@@ -342,6 +340,16 @@ handleIn1:                      ;[38]
     rjmp    usbSendAndReti      ;[50] 52 + 12 + 64 until SOP
 #endif
 
+#if USB_CFG_HAVE_INTRIN_ENDPOINT && USB_CFG_HAVE_INTRIN_ENDPOINT3
+handleIn3:
+    lds     cnt, usbTxLen3      ;[43]
+    sbrc    cnt, 4              ;[45]
+    rjmp    sendCntAndReti      ;[46] 48 + 16 = 64 until SOP
+    sts     usbTxLen3, x1       ;[47] x1 == USBPID_NAK from above
+    ldi     YL, lo8(usbTxBuf3)  ;[49]
+    ldi     YH, hi8(usbTxBuf3)  ;[50]
+    rjmp    usbSendAndReti      ;[51] 53 + 12 = 65 until SOP
+#endif
 
 ; USB spec says:
 ; idle = J
@@ -447,7 +455,7 @@ didStuff7:
 skipAddrAssign:
 ;end of usbDeviceAddress transfer
     ldi     x2, 1<<USB_INTR_PENDING_BIT;[4] int0 occurred during TX -- clear pending flag
-    out     USB_INTR_PENDING, x2;[5]
+    USB_STORE_PENDING(x2)   ;[5]
     ori     x1, USBIDLE     ;[6]
     in      x2, USBDDR      ;[7]
     cbr     x2, USBMASK     ;[8] set both pins to input

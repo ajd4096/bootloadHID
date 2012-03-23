@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2005 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt) or proprietary (CommercialLicense.txt)
- * This Revision: $Id: usbdrv.h 364 2007-06-25 15:06:09Z cs $
+ * This Revision: $Id: usbdrv.h 396 2007-09-19 16:39:54Z cs $
  */
 
 #ifndef __usbdrv_h_included__
@@ -16,8 +16,10 @@
 /*
 Hardware Prerequisites:
 =======================
-USB lines D+ and D- MUST be wired to the same I/O port. D+ must (also) be
-connected to INT0. D- requires a pullup of 1.5k to +3.5V (and the device
+USB lines D+ and D- MUST be wired to the same I/O port. We recommend that D+
+triggers the interrupt (best achieved by using INT0 for D+), but it is also
+possible to trigger the interrupt from D-. If D- is used, interrupts are also
+triggered by SOF packets. D- requires a pullup of 1.5k to +3.5V (and the device
 must be powered at 3.5V) to identify as low-speed USB device. A pullup of
 1M SHOULD be connected from D+ to +3.5V to prevent interference when no USB
 master is connected. We use D+ as interrupt source and not D- because it
@@ -29,8 +31,8 @@ usbDeviceConnect() and usbDeviceDisconnect() further down in this file.
 
 Please adapt the values in usbconfig.h according to your hardware!
 
-The device MUST be clocked at exactly 12 MHz or 16 MHz or at 16.5 MHz +/- 1%.
-See usbconfig-prototype.h for details.
+The device MUST be clocked at exactly 12 MHz, 15 MHz or 16 MHz
+or at 16.5 MHz +/- 1%. See usbconfig-prototype.h for details.
 
 
 Limitations:
@@ -84,14 +86,15 @@ on the next bus activity.
 Operation without an USB master:
 The driver behaves neutral without connection to an USB master if D- reads
 as 1. To avoid spurious interrupts, we recommend a high impedance (e.g. 1M)
-pullup resistor on D+. If D- becomes statically 0, the driver may block in
-the interrupt routine.
+pullup resistor on D+ (interrupt). If D- becomes statically 0, the driver may
+block in the interrupt routine.
 
 Interrupt latency:
 The application must ensure that the USB interrupt is not disabled for more
-than 20 cycles. This implies that all interrupt routines must either be
-declared as "INTERRUPT" instead of "SIGNAL" (see "avr/signal.h") or that they
-are written in assembler with "sei" as the first instruction.
+than 25 cycles (this is for 12 MHz, faster clocks allow longer latency).
+This implies that all interrupt routines must either be declared as "INTERRUPT"
+instead of "SIGNAL" (see "avr/signal.h") or that they are written in assembler
+with "sei" as the first instruction.
 
 Maximum interrupt duration / CPU cycle consumption:
 The driver handles all USB communication during the interrupt service
@@ -106,7 +109,7 @@ USB messages, even if they address another (low-speed) device on the same bus.
 /* --------------------------- Module Interface ---------------------------- */
 /* ------------------------------------------------------------------------- */
 
-#define USBDRV_VERSION  20070625
+#define USBDRV_VERSION  20070919
 /* This define uniquely identifies a driver version. It is a decimal number
  * constructed from the driver's release date in the form YYYYMMDD. If the
  * driver's behavior or interface changes, you can use this constant to
@@ -288,6 +291,13 @@ extern uchar    usbConfiguration;
  * You may want to reflect the "configured" status with a LED on the device or
  * switch on high power parts of the circuit only if the device is configured.
  */
+#if USB_COUNT_SOF
+extern volatile uchar   usbSofCount;
+/* This variable is incremented on every SOF packet. It is only available if
+ * the macro USB_COUNT_SOF is defined to a value != 0.
+ */
+#endif
+
 #define USB_STRING_DESCRIPTOR_HEADER(stringLength) ((2*(stringLength)+2) | (3<<8))
 /* This macro builds a descriptor header for a string descriptor given the
  * string's length. See usbdrv.c for an example how to use it.
@@ -557,6 +567,10 @@ at90s1200, attiny11, attiny12, attiny15, attiny28: these have no RAM
 #define USBPID_ACK      0xd2
 #define USBPID_NAK      0x5a
 #define USBPID_STALL    0x1e
+
+#ifndef USB_INITIAL_DATATOKEN
+#define USB_INITIAL_DATATOKEN   USBPID_DATA0
+#endif
 
 #ifndef __ASSEMBLER__
 

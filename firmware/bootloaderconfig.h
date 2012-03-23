@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt)
- * This Revision: $Id: bootloaderconfig.h 281 2007-03-20 13:22:10Z cs $
+ * This Revision: $Id: bootloaderconfig.h 376 2007-07-07 12:03:37Z cs $
  */
 
 #ifndef __bootloaderconfig_h_included__
@@ -51,6 +51,13 @@ these macros are defined, the boot loader usees them.
  * This may be any bit in the port. Please note that D+ must also be connected
  * to interrupt pin INT0!
  */
+/* #define USB_CFG_CLOCK_KHZ       (F_CPU/1000) */
+/* Clock rate of the AVR in MHz. Legal values are 12000, 16000 or 16500.
+ * The 16.5 MHz version of the code requires no crystal, it tolerates +/- 1%
+ * deviation from the nominal frequency. All other rates require a precision
+ * of 2000 ppm and thus a crystal!
+ * Default if not specified: 12 MHz
+ */
 
 /* ----------------------- Optional Hardware Config ------------------------ */
 
@@ -64,6 +71,17 @@ these macros are defined, the boot loader usees them.
 /* This constant defines the bit number in USB_CFG_PULLUP_IOPORT (defined
  * above) where the 1.5k pullup resistor is connected. See description
  * above for details.
+ */
+
+/* --------------------------- Functional Range ---------------------------- */
+
+#define BOOTLOADER_CAN_EXIT     1
+/* If this macro is defined to 1, the boot loader command line utility can
+ * initiate a reboot after uploading the FLASH when the "-r" command line
+ * option is given. If you define it to 0 or leave it undefined, the "-r"
+ * option won't work and you save a couple of bytes in the boot loader. This
+ * may be of advantage if you compile with gcc 4 instead of gcc 3 because it
+ * generates slightly larger code.
  */
 
 /* ------------------------------------------------------------------------- */

@@ -36,7 +36,7 @@ of CPU cycles, but even an exact number of cycles!
 ; when instruction starts
 
 
-SIG_INTERRUPT0:
+USB_INTR_VECTOR:
 ;order of registers pushed: r0, SREG [sofError], YL, YH, shift, x1, x2, x3, x4, cnt
     push    r0                  ;[-23] push only what is necessary to sync with edge ASAP
     in      r0, SREG            ;[-21]
@@ -64,6 +64,11 @@ waitForK:
     rjmp    foundK
     sbis    USBIN, USBMINUS
     rjmp    foundK
+#if USB_COUNT_SOF
+    lds     YL, usbSofCount
+    inc     YL
+    sts     usbSofCount, YL
+#endif  /* USB_COUNT_SOF */
     rjmp    sofError
 foundK:                         ;[-12]
 ;{3, 5} after falling D- edge, average delay: 4 cycles [we want 5 for center sampling]
@@ -331,7 +336,7 @@ se0:
     neg     cnt                 ;[6]
     cpi     cnt, 3              ;[7]
     ldi     x2, 1<<USB_INTR_PENDING_BIT ;[8]
-    out     USB_INTR_PENDING, x2;[9] clear pending intr and check flag later. SE0 should be over.
+    USB_STORE_PENDING(x2)       ;[9] clear pending intr and check flag later. SE0 should be over.
     brlo    doReturn            ;[10] this is probably an ACK, NAK or similar packet
     sub     YL, cnt             ;[11]
     sbci    YH, 0               ;[12]
@@ -401,7 +406,7 @@ handleSetupOrOut:               ;[34]
     pop     shift               ;[48]
     pop     YH                  ;[50]
     pop     YL                  ;[52]
-    in      r0, USB_INTR_PENDING;[54]
+    USB_LOAD_PENDING(r0)        ;[54]
     sbrc    r0, USB_INTR_PENDING_BIT;[55] check whether data is already arriving
     rjmp    waitForJ            ;[56] save the pops and pushes -- a new interrupt is aready pending
     rjmp    sofError            ;[57] not an error, but it does the pops and reti we want
@@ -558,7 +563,7 @@ didStuff7:
 skipAddrAssign:
 ;end of usbDeviceAddress transfer
     ldi     x2, 1<<USB_INTR_PENDING_BIT;[4] int0 occurred during TX -- clear pending flag
-    out     USB_INTR_PENDING, x2;[5]
+    USB_STORE_PENDING(x2)   ;[5]
     ori     x1, USBIDLE     ;[6]
     in      x2, USBDDR      ;[7]
     cbr     x2, USBMASK     ;[8] set both pins to input

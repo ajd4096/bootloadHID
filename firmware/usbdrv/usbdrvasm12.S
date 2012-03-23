@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt) or proprietary (CommercialLicense.txt)
- * This Revision: $Id: usbdrvasm12.S 353 2007-06-21 19:05:08Z cs $
+ * This Revision: $Id: usbdrvasm12.S 396 2007-09-19 16:39:54Z cs $
  */
 
 /* Do not link this file! Link usbdrvasm.S instead, which includes the
@@ -38,7 +38,7 @@ DATAx (rx) to ACK/NAK/STALL (tx)                    2   7.5    16-60
 ;max allowable interrupt latency: 34 cycles -> max 25 cycles interrupt disable
 ;max stack usage: [ret(2), YL, SREG, YH, shift, x1, x2, x3, cnt, x4] = 11 bytes
 ;Numbers in brackets are maximum cycles since SOF.
-SIG_INTERRUPT0:
+USB_INTR_VECTOR:
 ;order of registers pushed: YL, SREG [sofError], YH, shift, x1, x2, x3, cnt
     push    YL              ;2 [35] push only what is necessary to sync with edge ASAP
     in      YL, SREG        ;1 [37]
@@ -64,6 +64,11 @@ waitForK:
     rjmp    foundK
     sbis    USBIN, USBMINUS
     rjmp    foundK
+#if USB_COUNT_SOF
+    lds     YL, usbSofCount
+    inc     YL
+    sts     usbSofCount, YL
+#endif  /* USB_COUNT_SOF */
     rjmp    sofError
 foundK:
 ;{3, 5} after falling D- edge, average delay: 4 cycles [we want 4 for center sampling]
@@ -250,7 +255,7 @@ se0:                            ;  [0]
     neg     cnt                 ;1 [2]
     cpi     cnt, 3              ;1 [3]
     ldi     x2, 1<<USB_INTR_PENDING_BIT ;1 [4]
-    out     USB_INTR_PENDING, x2;1 [5] clear pending intr and check flag later. SE0 should be over.
+    USB_STORE_PENDING(x2)       ;1 [5] clear pending intr and check flag later. SE0 should be over.
     brlo    doReturn            ;1 [6] this is probably an ACK, NAK or similar packet
     sub     YL, cnt             ;1 [7]
     sbci    YH, 0               ;1 [8]
@@ -316,7 +321,7 @@ handleSetupOrOut:               ;1 [29] (branch taken)
     pop     x1                  ;2 [41]
     pop     shift               ;2 [43]
     pop     YH                  ;2 [45]
-    in      YL, USB_INTR_PENDING;1 [46]
+    USB_LOAD_PENDING(YL)        ;1 [46]
     sbrc    YL, USB_INTR_PENDING_BIT;1 [47] check whether data is already arriving
     rjmp    waitForJ            ;2 [49] save the pops and pushes -- a new interrupt is aready pending
     rjmp    sofError            ;2 not an error, but it does the pops and reti we want
@@ -533,7 +538,7 @@ didStuff7:
 skipAddrAssign:
 ;end of usbDeviceAddress transfer
     ldi     x2, 1<<USB_INTR_PENDING_BIT;1 [9] int0 occurred during TX -- clear pending flag
-    out     USB_INTR_PENDING, x2;1 [10]
+    USB_STORE_PENDING(x2)   ;1 [10]
     ori     x1, USBIDLE     ;1 [11]
     in      x2, USBDDR      ;1 [12]
     cbr     x2, USBMASK     ;1 [13] set both pins to input

@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt)
- * This Revision: $Id: main.c 281 2007-03-20 13:22:10Z cs $
+ * This Revision: $Id: main.c 378 2007-07-07 20:47:21Z cs $
  */
 
 #include <avr/io.h>
@@ -15,14 +15,15 @@
 #include <avr/boot.h>
 #include <string.h>
 
-#include "usbdrv.h"
-#include "oddebug.h"
 #include "bootloaderconfig.h"
+#include "usbdrv.c"
 
 static char             reportId = -1;
 static unsigned long    currentAddress; /* in bytes */
 static uchar            offset;         /* data already processed in current transfer */
+#if BOOTLOADER_CAN_EXIT
 static uchar            exitMainloop;
+#endif
 
 PROGMEM char usbHidReportDescriptor[33] = {
     0x06, 0x00, 0xff,              // USAGE_PAGE (Generic Desktop)
@@ -79,9 +80,9 @@ static uchar    replyBuffer[7] = {
         SPM_PAGESIZE & 0xff,
         SPM_PAGESIZE >> 8,
         ((long)FLASHEND + 1) & 0xff,
-        ((long)(FLASHEND + 1) >> 8) & 0xff,
-        ((long)(FLASHEND + 1) >> 16) & 0xff,
-        ((long)(FLASHEND + 1) >> 24) & 0xff
+        (((long)FLASHEND + 1) >> 8) & 0xff,
+        (((long)FLASHEND + 1) >> 16) & 0xff,
+        (((long)FLASHEND + 1) >> 24) & 0xff
     };
 
     if(rq->bRequest == USBRQ_HID_SET_REPORT){
@@ -103,10 +104,13 @@ union {
     uchar           c[4];
 }       address;
 
+#if BOOTLOADER_CAN_EXIT
     if(reportId == 1){          /* leave boot loader */
         exitMainloop = 1;
         return 1;
-    }else if(reportId == 2){    /* write page */
+    }else
+#endif
+    if(reportId == 2){    /* write page */
         if(offset == 0){
             data++;
             DBG1(0x30, data, 4);
@@ -192,12 +196,14 @@ uchar   i, j = 0;
         sei();
         while(bootLoaderCondition()){ /* main event loop */
             usbPoll();
+#if BOOTLOADER_CAN_EXIT
             if(exitMainloop){
                 i = 0;
                 while(--i)
                     usbPoll();      /* try to send the response */
                 break;
             }
+#endif
         }
     }
     leaveBootloader();

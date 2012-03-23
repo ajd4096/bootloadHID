@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2005 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt) or proprietary (CommercialLicense.txt)
- * This Revision: $Id: usbdrv.c 350 2007-06-13 11:43:16Z cs $
+ * This Revision: $Id: usbdrv.c 396 2007-09-19 16:39:54Z cs $
  */
 
 #include "iarcompat.h"
@@ -44,12 +44,15 @@ uchar       usbRxToken;         /* token for data we received; if more than 1 rx
 uchar       usbMsgLen = 0xff;   /* remaining number of bytes, no msg to send if -1 (see usbMsgPtr) */
 volatile uchar usbTxLen = USBPID_NAK;   /* number of bytes to transmit with next IN token or handshake token */
 uchar       usbTxBuf[USB_BUFSIZE];/* data to transmit with next IN, free if usbTxLen contains handshake token */
+#   if USB_COUNT_SOF
+volatile uchar  usbSofCount;    /* incremented by assembler module every SOF */
+#   endif
 #if USB_CFG_HAVE_INTRIN_ENDPOINT
 volatile uchar usbTxLen1 = USBPID_NAK;  /* TX count for endpoint 1 */
 uchar       usbTxBuf1[USB_BUFSIZE];     /* TX data for endpoint 1 */
 #if USB_CFG_HAVE_INTRIN_ENDPOINT3
-volatile uchar usbTxLen3 = USBPID_NAK;  /* TX count for endpoint 1 */
-uchar       usbTxBuf3[USB_BUFSIZE];     /* TX data for endpoint 1 */
+volatile uchar usbTxLen3 = USBPID_NAK;  /* TX count for endpoint 3 */
+uchar       usbTxBuf3[USB_BUFSIZE];     /* TX data for endpoint 3 */
 #endif
 #endif
 
@@ -316,6 +319,9 @@ uchar           replyLen = 0, flags = USB_FLG_USE_DEFAULT_RW;
  * 0xff 11111111 (USBPID_OUT for endpoint 1)
  */
     DBG2(0x10 + ((usbRxToken >> 1) & 3), data, len);    /* SETUP0=12; OUT0=10; OUT1=13 */
+#ifdef USB_RX_USER_HOOK
+    USB_RX_USER_HOOK(data, len)
+#endif
 #if USB_CFG_IMPLEMENT_FN_WRITEOUT
     if(usbRxToken == 0xff){
         usbFunctionWriteOut(data, len);
@@ -370,10 +376,12 @@ uchar           replyLen = 0, flags = USB_FLG_USE_DEFAULT_RW;
                             replyLen = usbFunctionDescriptor(rq);
                         }
 #endif  /* USB_CFG_DESCR_PROPS_STRINGS & USB_PROP_IS_DYNAMIC */
+#if USB_CFG_DESCR_PROPS_HID_REPORT  /* only support HID descriptors if enabled */
                     }else if(rq->wValue.bytes[1] == USBDESCR_HID){          /* 0x21 */
                         GET_DESCRIPTOR(USB_CFG_DESCR_PROPS_HID, usbDescriptorConfiguration + 18)
                     }else if(rq->wValue.bytes[1] == USBDESCR_HID_REPORT){   /* 0x22 */
                         GET_DESCRIPTOR(USB_CFG_DESCR_PROPS_HID_REPORT, usbDescriptorHidReport)
+#endif  /* USB_CFG_DESCR_PROPS_HID_REPORT */
                     }else if(USB_CFG_DESCR_PROPS_UNKNOWN & USB_PROP_IS_DYNAMIC){
                         replyLen = usbFunctionDescriptor(rq);
                     }
@@ -389,18 +397,18 @@ uchar           replyLen = 0, flags = USB_FLG_USE_DEFAULT_RW;
                     SET_REPLY_LEN(1);
 #if USB_CFG_HAVE_INTRIN_ENDPOINT
                 }else if(rq->bRequest == USBRQ_SET_INTERFACE){      /* 11 */
-                    USB_SET_DATATOKEN1(USBPID_DATA0);   /* reset data toggling for interrupt endpoint */
+                    USB_SET_DATATOKEN1(USB_INITIAL_DATATOKEN);  /* reset data toggling for interrupt endpoint */
 #   if USB_CFG_HAVE_INTRIN_ENDPOINT3
-                    USB_SET_DATATOKEN3(USBPID_DATA0);   /* reset data toggling for interrupt endpoint */
+                    USB_SET_DATATOKEN3(USB_INITIAL_DATATOKEN);  /* reset data toggling for interrupt endpoint */
 #   endif
 #   if USB_CFG_IMPLEMENT_HALT
                     usbTxLen1 = USBPID_NAK;
                 }else if(rq->bRequest == USBRQ_CLEAR_FEATURE || rq->bRequest == USBRQ_SET_FEATURE){   /* 1|3 */
                     if(rq->wValue.bytes[0] == 0 && rq->wIndex.bytes[0] == 0x81){   /* feature 0 == HALT for endpoint == 1 */
                         usbTxLen1 = rq->bRequest == USBRQ_CLEAR_FEATURE ? USBPID_NAK : USBPID_STALL;
-                        USB_SET_DATATOKEN1(USBPID_DATA0);   /* reset data toggling for interrupt endpoint */
+                        USB_SET_DATATOKEN1(USB_INITIAL_DATATOKEN);  /* reset data toggling for interrupt endpoint */
 #       if USB_CFG_HAVE_INTRIN_ENDPOINT3
-                        USB_SET_DATATOKEN3(USBPID_DATA0);   /* reset data toggling for interrupt endpoint */
+                        USB_SET_DATATOKEN3(USB_INITIAL_DATATOKEN);  /* reset data toggling for interrupt endpoint */
 #       endif
                     }
 #   endif
@@ -542,9 +550,9 @@ USB_PUBLIC void usbInit(void)
 #endif
     USB_INTR_ENABLE |= (1 << USB_INTR_ENABLE_BIT);
 #if USB_CFG_HAVE_INTRIN_ENDPOINT
-    USB_SET_DATATOKEN1(USBPID_DATA0);   /* reset data toggling for interrupt endpoint */
+    USB_SET_DATATOKEN1(USB_INITIAL_DATATOKEN);  /* reset data toggling for interrupt endpoint */
 #   if USB_CFG_HAVE_INTRIN_ENDPOINT3
-    USB_SET_DATATOKEN3(USBPID_DATA0);   /* reset data toggling for interrupt endpoint */
+    USB_SET_DATATOKEN3(USB_INITIAL_DATATOKEN);  /* reset data toggling for interrupt endpoint */
 #   endif
 #endif
 }

@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2005 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt) or proprietary (CommercialLicense.txt)
- * This Revision: $Id: usbconfig-prototype.h 358 2007-06-23 13:30:30Z cs $
+ * This Revision: $Id: usbconfig-prototype.h 396 2007-09-19 16:39:54Z cs $
  */
 
 #ifndef __usbconfig_h_included__
@@ -38,7 +38,7 @@ rename it to "usbconfig.h". Then edit it accordingly.
  * to interrupt pin INT0!
  */
 /* #define USB_CFG_CLOCK_KHZ       (F_CPU/1000) */
-/* Clock rate of the AVR in MHz. Legal values are 12000, 16000 or 16500.
+/* Clock rate of the AVR in MHz. Legal values are 12000, 15000, 16000 or 16500.
  * The 16.5 MHz version of the code requires no crystal, it tolerates +/- 1%
  * deviation from the nominal frequency. All other rates require a precision
  * of 2000 ppm and thus a crystal!
@@ -69,6 +69,10 @@ rename it to "usbconfig.h". Then edit it accordingly.
 /* Define this to 1 if you want to compile a version with three endpoints: The
  * default control endpoint 0, an interrupt-in endpoint 1 and an interrupt-in
  * endpoint 3. You must also enable endpoint 1 above.
+ */
+/* #define USB_INITIAL_DATATOKEN           USBPID_DATA0 */
+/* The above macro defines the startup condition for data toggling on the
+ * interrupt/bulk endpoints 1 and 3. Defaults to USBPID_DATA0.
  */
 #define USB_CFG_IMPLEMENT_HALT          0
 /* Define this to 1 if you also want to implement the ENDPOINT_HALT feature
@@ -110,6 +114,17 @@ rename it to "usbconfig.h". Then edit it accordingly.
 /* Define this to 1 if you want flowcontrol over USB data. See the definition
  * of the macros usbDisableAllRequests() and usbEnableAllRequests() in
  * usbdrv.h.
+ */
+/* #define USB_RX_USER_HOOK(data, len)     if(usbRxToken == (uchar)USBPID_SETUP) blinkLED(); */
+/* This macro is a hook if you want to do unconventional things. If it is
+ * defined, it's inserted at the beginning of received message processing.
+ * If you eat the received message and don't want default processing to
+ * proceed, do a return after doing your things. One possible application
+ * (besides debugging) is to flash a status LED on each packet.
+ */
+#define USB_COUNT_SOF                   0
+/* define this macro to 1 if you need the global variable "usbSofCount" which
+ * counts SOF packets.
  */
 
 /* -------------------------- Device Description --------------------------- */
@@ -254,5 +269,6 @@ rename it to "usbconfig.h". Then edit it accordingly.
 /* #define USB_INTR_ENABLE_BIT     INT0 */
 /* #define USB_INTR_PENDING        GIFR */
 /* #define USB_INTR_PENDING_BIT    INTF0 */
+/* #define USB_INTR_VECTOR         SIG_INTERRUPT0 */
 
 #endif /* __usbconfig_h_included__ */

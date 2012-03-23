@@ -5,7 +5,7 @@
 # Tabsize: 4
 # Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
 # License: GNU GPL v2 (see License.txt)
-# This Revision: $Id: Makefile 281 2007-03-20 13:22:10Z cs $
+# This Revision: $Id: Makefile 376 2007-07-07 12:03:37Z cs $
 
 ###############################################################################
 # Configure the following variables according to your AVR. The example below
@@ -45,7 +45,7 @@ COMPILE = avr-gcc -Wall -Os -Iusbdrv -I. -mmcu=$(DEVICE) #-DTEST_MODE -DDEBUG_LE
 # NEVER compile the final product with debugging! Any debug output will
 # distort timing so that the specs can't be met.
 
-OBJECTS = usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o main.o
+OBJECTS =  usbdrv/usbdrvasm.o usbdrv/oddebug.o main.o
 
 
 # symbolic targets:

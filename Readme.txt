@@ -53,7 +53,7 @@ To protect the boot loader from overwriting itself, set the lock bits with
 
 In order to build the command line tool, change to the "commandline" directory
 and edit the "Makefile". Comment out the definitions which are for Unix only
-and uncomment those for Windows. Then type "make" to build "Automator.exe".
+and uncomment those for Windows. Then type "make" to build "bootloadHID.exe".
 Alternatively, if everything is installed in the default locations, you
 can type "make -f Makefile.windows".
 

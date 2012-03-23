@@ -4,3 +4,13 @@ bottom to see the most recent changes.
 
 
 * Release 2007-06-25
+
+- Added command line option to leave boot loader.
+- Added compile time option in firmware whether "-r" option is supported.
+  Saves code size if not supported.
+- Define USB_PUBLIC to static and include usbdrv.c in order to save code size
+  This is necessary so that even gcc 4 generated code fits into 2k flash.
+- Fixed FLASHEND computation for >32k devices (cast to long).
+- Updated to newest version of driver.
+
+* Release 2007-10-23

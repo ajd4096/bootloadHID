@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: Proprietary, free under certain conditions. See Documentation.
- * This Revision: $Id: main.c 323 2007-03-29 17:25:03Z cs $
+ * This Revision: $Id: main.c 373 2007-07-04 08:59:36Z cs $
  */
 
 #include <stdio.h>
@@ -23,6 +23,7 @@
 
 static char dataBuffer[65536 + 256];    /* buffer for file data */
 static int  startAddress, endAddress;
+static char leaveBootLoader = 0;
 
 /* ------------------------------------------------------------------------- */
 
@@ -194,14 +195,14 @@ union{
         startAddr += sizeof(buffer.data.data);
     }
     printf("\n");
-#if 0   /* user should leave boot loader manually */
-    /* and now leave boot loader: */
-    buffer.info.reportId = 1;
-    if((err = usbSetReport(dev, USB_HID_REPORT_TYPE_FEATURE, buffer.bytes, sizeof(buffer.info))) != 0){
-        fprintf(stderr, "Error leaving boot loader: %s\n", usbErrorMessage(err));
-        goto errorOccurred;
+    if(leaveBootLoader){
+        /* and now leave boot loader: */
+        buffer.info.reportId = 1;
+        usbSetReport(dev, USB_HID_REPORT_TYPE_FEATURE, buffer.bytes, sizeof(buffer.info));
+        /* Ignore errors here. If the device reboots before we poll the response,
+         * this request fails.
+         */
     }
-#endif
 errorOccurred:
     if(dev != NULL)
         usbCloseDevice(dev);
@@ -212,11 +213,13 @@ errorOccurred:
 
 static void printUsage(char *pname)
 {
-    fprintf(stderr, "usage: %s <intel-hexfile>\n", pname);
+    fprintf(stderr, "usage: %s [-r] <intel-hexfile>\n", pname);
 }
 
 int main(int argc, char **argv)
 {
+char    *file;
+
     if(argc < 2){
         printUsage(argv[0]);
         return 1;
@@ -225,10 +228,20 @@ int main(int argc, char **argv)
         printUsage(argv[0]);
         return 1;
     }
+    if(strcmp(argv[1], "-r") == 0){
+        leaveBootLoader = 1;
+        if(argc < 3){
+            printUsage(argv[0]);
+            return 1;
+        }
+        file = argv[2];
+    }else{
+        file = argv[1];
+    }
     startAddress = sizeof(dataBuffer);
     endAddress = 0;
     memset(dataBuffer, -1, sizeof(dataBuffer));
-    if(parseIntelHex(argv[1], dataBuffer, &startAddress, &endAddress))
+    if(parseIntelHex(file, dataBuffer, &startAddress, &endAddress))
         return 1;
     if(startAddress >= endAddress){
         fprintf(stderr, "No data in input file, exiting.\n");

@@ -24,7 +24,6 @@ the file appropriate for the given clock rate.
 #endif  /* __IAR_SYSTEMS_ASM__ */
 #include "usbdrv.h" /* for common defs */
 
-
 /* register names */
 #define x1      r16
 #define x2      r17
@@ -48,30 +47,51 @@ the file appropriate for the given clock rate.
 #   define ZL       r30
 #   define ZH       r31
 #   define lo8(x)   LOW(x)
-#   define hi8(x)   ((x)>>8)    /* not HIGH to allow XLINK to make a proper range check */
+#   define hi8(x)   (((x)>>8) & 0xff)   /* not HIGH to allow XLINK to make a proper range check */
 
     extern  usbRxBuf, usbDeviceAddr, usbNewDeviceAddr, usbInputBufOffset
     extern  usbCurrentTok, usbRxLen, usbRxToken, usbTxLen
     extern  usbTxBuf, usbMsgLen, usbTxLen1, usbTxBuf1, usbTxLen3, usbTxBuf3
+#   if USB_COUNT_SOF
+        extern usbSofCount
+#   endif
     public  usbCrc16
     public  usbCrc16Append
 
     COMMON  INTVEC
-    ORG     INT0_vect
-    rjmp    SIG_INTERRUPT0
+#   ifndef USB_INTR_VECTOR
+        ORG     INT0_vect
+#   else /* USB_INTR_VECTOR */
+        ORG     USB_INTR_VECTOR
+#       undef   USB_INTR_VECTOR
+#   endif /* USB_INTR_VECTOR */
+#   define  USB_INTR_VECTOR usbInterruptHandler
+    rjmp    USB_INTR_VECTOR
     RSEG    CODE
 
 #else /* __IAR_SYSTEMS_ASM__ */
 
 #   define nop2     rjmp    .+0 /* jump to next instruction */
 
+#   ifndef USB_INTR_VECTOR /* default to hardware interrupt INT0 */
+#       define USB_INTR_VECTOR  SIG_INTERRUPT0
+#   endif
     .text
-    .global SIG_INTERRUPT0
-    .type   SIG_INTERRUPT0, @function
+    .global USB_INTR_VECTOR
+    .type   USB_INTR_VECTOR, @function
     .global usbCrc16
     .global usbCrc16Append
-
 #endif /* __IAR_SYSTEMS_ASM__ */
+
+
+#if USB_INTR_PENDING < 0x40 /* This is an I/O address, use in and out */
+#   define  USB_LOAD_PENDING(reg)   in reg, USB_INTR_PENDING
+#   define  USB_STORE_PENDING(reg)  out USB_INTR_PENDING, reg
+#else   /* It's a memory address, use lds and sts */
+#   define  USB_LOAD_PENDING(reg)   lds reg, USB_INTR_PENDING
+#   define  USB_STORE_PENDING(reg)  sts USB_INTR_PENDING, reg
+#endif
+
 
 ;----------------------------------------------------------------------------
 ; Utility functions
@@ -190,6 +210,8 @@ usbCrc16Append:
 
 #if USB_CFG_CLOCK_KHZ == 12000
 #   include "usbdrvasm12.S"
+#elif USB_CFG_CLOCK_KHZ == 15000
+#   include "usbdrvasm15.S"
 #elif USB_CFG_CLOCK_KHZ == 16000
 #   include "usbdrvasm16.S"
 #elif USB_CFG_CLOCK_KHZ == 16500

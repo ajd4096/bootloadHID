@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt)
- * This Revision: $Id: usbconfig.h 322 2007-03-29 17:24:13Z cs $
+ * This Revision: $Id: usbconfig.h 376 2007-07-07 12:03:37Z cs $
  */
 
 #ifndef __usbconfig_h_included__
@@ -25,6 +25,11 @@ the newest features and options.
  * Do not edit the functional settings below.
  */
 #include "bootloaderconfig.h"
+
+#define USB_PUBLIC static
+/* Use the define above if you #include usbdrv.c instead of linking against it.
+ * This technique saves a couple of bytes in flash memory.
+ */
 
 /* --------------------------- Functional Range ---------------------------- */
 

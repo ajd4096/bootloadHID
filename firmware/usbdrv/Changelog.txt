@@ -146,3 +146,23 @@ Scroll down to the bottom to see the most recent changes.
     to usbdrvasm12.S, usbdrvasm16.S and usbdrvasm165.S respectively.
 
 * Release 2007-06-25
+
+  - 16 MHz module: Do SE0 check in stuffed bits as well.
+
+* Release 2007-07-07
+
+  - Define hi8(x) for IAR compiler to limit result to 8 bits. This is necessary
+    for negative values.
+  - Added 15 MHz module contributed by V. Bosch.
+  - Interrupt vector name can now be configured. This is useful if somebody
+    wants to use a different hardware interrupt than INT0.
+
+* Release 2007-08-07
+
+  - Moved handleIn3 routine in usbdrvasm16.S so that relative jump range is
+    not exceeded.
+  - More config options: USB_RX_USER_HOOK(), USB_INITIAL_DATATOKEN,
+    USB_COUNT_SOF
+  - USB_INTR_PENDING can now be a memory address
+
+* Release 2007-09-19
