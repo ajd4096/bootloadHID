@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt)
- * This Revision: $Id: bootloaderconfig.h 684 2008-10-22 18:43:39Z cs $
+ * This Revision: $Id: bootloaderconfig.h 699 2008-11-26 19:50:32Z cs $
  */
 
 #ifndef __bootloaderconfig_h_included__
@@ -112,7 +112,7 @@ static inline void  bootLoaderInit(void)
     _delay_us(10);  /* wait for levels to stabilize */
 }
 
-#define bootLoaderCondition()   ((PORTD & (1 << 3)) == 0)   /* True if jumper is set */
+#define bootLoaderCondition()   ((PIND & (1 << 3)) == 0)   /* True if jumper is set */
 
 #endif
 

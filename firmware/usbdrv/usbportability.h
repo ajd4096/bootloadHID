@@ -4,8 +4,8 @@
  * Creation Date: 2008-06-17
  * Tabsize: 4
  * Copyright: (c) 2008 by OBJECTIVE DEVELOPMENT Software GmbH
- * License: GNU GPL v2 (see License.txt) or proprietary (CommercialLicense.txt)
- * This Revision: $Id: usbportability.h 624 2008-06-18 14:05:26Z cs $
+ * License: GNU GPL v2 (see License.txt), GNU GPL v3 or proprietary (CommercialLicense.txt)
+ * This Revision: $Id: usbportability.h 692 2008-11-07 15:07:40Z cs $
  */
 
 /*

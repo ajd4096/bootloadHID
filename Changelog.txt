@@ -21,3 +21,9 @@ bottom to see the most recent changes.
   module.
 
 * Release 2008-10-22
+
+- Code size improvements.
+- Don't add 0x20 if I/O registers are in memory addressable area in usbconfig.h
+- Example config should check jumper status on PIND, not PORTD.
+
+* Release 2008-11-26

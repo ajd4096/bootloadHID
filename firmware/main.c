@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt)
- * This Revision: $Id: main.c 684 2008-10-22 18:43:39Z cs $
+ * This Revision: $Id: main.c 693 2008-11-14 15:09:37Z cs $
  */
 
 #include <avr/io.h>
@@ -157,14 +157,20 @@ uchar   isLast;
     isLast = offset & 0x80; /* != 0 if last block received */
     do{
         addr_t prevAddr;
+#if SPM_PAGESIZE > 256
+        uint pageAddr;
+#else
+        uchar pageAddr;
+#endif
         DBG1(0x32, 0, 0);
-        if((address.s[0] & (SPM_PAGESIZE - 1)) == 0){   /* if page start: erase */
+        pageAddr = address.s[0] & (SPM_PAGESIZE - 1);
+        if(pageAddr == 0){              /* if page start: erase */
             DBG1(0x33, 0, 0);
 #ifndef TEST_MODE
             cli();
-            boot_page_erase(address.l);     /* erase page */
+            boot_page_erase(address.l); /* erase page */
             sei();
-            boot_spm_busy_wait();           /* wait until page is erased */
+            boot_spm_busy_wait();       /* wait until page is erased */
 #endif
         }
         cli();
@@ -174,7 +180,8 @@ uchar   isLast;
         address.l += 2;
         data += 2;
         /* write page when we cross page boundary */
-        if((address.s[0] & (SPM_PAGESIZE - 1)) == 0){
+        pageAddr = address.s[0] & (SPM_PAGESIZE - 1);
+        if(pageAddr == 0){
             DBG1(0x34, 0, 0);
 #ifndef TEST_MODE
             cli();
@@ -216,6 +223,7 @@ int main(void)
     DBG1(0x00, 0, 0);
     /* jump to application if jumper is set */
     if(bootLoaderCondition()){
+        uchar i = 0, j = 0;
 #ifndef TEST_MODE
         GICR = (1 << IVCE);  /* enable change of interrupt vectors */
         GICR = (1 << IVSEL); /* move interrupts to boot flash section */
@@ -226,11 +234,13 @@ int main(void)
             usbPoll();
 #if BOOTLOADER_CAN_EXIT
             if(exitMainloop){
-#if F_CPU != 12800000   /* memory is tight at 12.8 MHz, save luxury stuff */
-                static uint i;
-                if(--i == 0)    /* delay 65k iterations to allow for USB reply to exit command */
+#if F_CPU == 12800000
+                break;  /* memory is tight at 12.8 MHz, save exit delay below */
 #endif
-                    break;
+                if(--i == 0){
+                    if(--j == 0)
+                        break;
+                }
             }
 #endif
         }while(bootLoaderCondition());

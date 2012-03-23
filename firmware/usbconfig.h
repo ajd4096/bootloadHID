@@ -5,7 +5,7 @@
  * Tabsize: 4
  * Copyright: (c) 2007 by OBJECTIVE DEVELOPMENT Software GmbH
  * License: GNU GPL v2 (see License.txt)
- * This Revision: $Id: usbconfig.h 684 2008-10-22 18:43:39Z cs $
+ * This Revision: $Id: usbconfig.h 693 2008-11-14 15:09:37Z cs $
  */
 
 #ifndef __usbconfig_h_included__
@@ -104,7 +104,7 @@ macro tuneOsccal
     out     TCNT0, YH                       ;[4]
     subi    YL, EXPECTED_TIMER0_INCREMENT   ;[5]
 #if OSCCAL > 0x3f
-    lds     YH, 0x20+OSCCAL                 ;[6]
+    lds     YH, OSCCAL                      ;[6]
 #else
     in      YH, OSCCAL                      ;[6]
 #endif
@@ -118,7 +118,7 @@ notTooHigh:
     inc     YH                              ;[12] clock rate was too low
 osctuneDone:
 #if OSCCAL > 0x3f
-    sts     0x20+OSCCAL, YH                 ;[12-13] store tuned value
+    sts     OSCCAL, YH                      ;[12-13] store tuned value
 #else
     out     OSCCAL, YH                      ;[12-13] store tuned value
 #endif
